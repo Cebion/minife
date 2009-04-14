@@ -20,6 +20,10 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 
 #include <iostream>
@@ -30,6 +34,8 @@
 #include <guichan/sdl.hpp>
 #include "SDL.h"
 
+#include <unistd.h>
+
 using namespace std;
 
 #ifdef _PSP
@@ -37,6 +43,10 @@ using namespace std;
    default heap size is only 64kB... */
 #include <pspmoduleinfo.h>
 PSP_HEAP_SIZE_MAX();
+
+#include <pspsdk.h>
+#include <pspsysmem.h>
+extern "C" int _EXFUN(__psp_free_heap, (void));
 #endif
 
 SDL_Surface* screen;
@@ -153,9 +163,59 @@ void halt()
 
 extern "C" int main(int argc, char **argv)
 {
+  /* Run the nifty frontend */
   init();
   run();  
   halt();
+
+#ifdef _PSP
+  /* Release all memory for FreeDink - no more malloc from now on! */
+  // pspDebugScreenPrintf("Memory free: %dkB\n", sceKernelTotalFreeMemSize()/1024);
+  __psp_free_heap();
+
+  /* Run Dink */
+  char* myargv[] = { (char*)"-d" };
+  //SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx", PSP_MEMORY_PARTITION_USER, 1, myargv);
+  SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx", PSP_MEMORY_PARTITION_USER, 1, myargv);
+  if (mod < 0)
+    {
+      // Error
+      pspDebugScreenInit();
+      pspDebugScreenPrintf("Could not run FreeDink:\n");
+      switch(mod)
+	{
+	case 0x80010002:
+	  pspDebugScreenPrintf("Program not found (%p)\n", mod);
+	  break;
+	case 0x80020148: // SCE_KERNEL_ERROR_UNSUPPORTED_PRX_TYPE
+	  pspDebugScreenPrintf("Unsupported PRX application (%p)\n", mod);
+	  break;
+	case 0x800200D9: // http://forums.ps2dev.org/viewtopic.php?t=11887
+	  pspDebugScreenPrintf("Not enough memory (%p)\n", mod);
+	  break;
+	case 0x80020149: // SCE_KERNEL_ERROR_ILLEGAL_PERM_CALL
+	  pspDebugScreenPrintf("Not running from memory card? (%p)\n", mod);
+	  break;
+	case 0x80010014:
+	  pspDebugScreenPrintf("Invalid path? (%p)\n", mod);
+	  break;
+	default:
+	  pspDebugScreenPrintf("Unknown error %p\n", mod);
+	}
+      pspDebugScreenPrintf("\n");
+      pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT);
+      sleep(5);
+      return EXIT_FAILURE;
+    }
+  // Don't printf anything here, it messes the SDL video
+  // initialization for some reason..
+
+
+  /* Pause the thread, so that if running FreeDink failed, the user
+     still can use the [HOME] button to reset to the XMB. */
+  // sceKernelSelfStopUnloadModule(1, 0, NULL); // cleaner, but [HOME] crashes
+  sceKernelSleepThread();
+#endif
 
   return EXIT_SUCCESS;
 }

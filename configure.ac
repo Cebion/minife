@@ -65,7 +65,7 @@ AM_PATH_SDL($SDL_VERSION,
   :,
   AC_MSG_WARN([*** SDL version $SDL_VERSION not found!]); LACK_LIBSDL=1
 )
-CPPFLAGS="$CPPFLAGS $SDL_CFLAGS"
+CXXFLAGS="$CXXFLAGS $SDL_CFLAGS"
 LIBS="$SDL_LIBS $LIBS"
 
 LIBS="-ljpeg -lpng -lz $LIBS"
@@ -92,7 +92,7 @@ if test "$LACK_LIBSDL_IMAGE" = 1; then
   error=1
 fi
 
-if test "$LACK_LIBGUICHAN_IMAGE" = 1; then
+if test "$LACK_LIBGUICHAN" = 1; then
   echo "* You need to install the Guichan library (preferably v0.8.1)";
   error=1
 fi
@@ -100,7 +100,7 @@ fi
 if test "$error" = 1; then
   echo
   echo "There are errors - stopping. Please check the reports above."
-  echo "If dependencies (such as SDL_gfx) are missing,"
+  echo "If dependencies (such as SDL_image) are missing,"
   echo "please check BUILD for distro package names."
   exit 1
 elif test "$warning" = 1; then
