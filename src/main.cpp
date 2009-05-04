@@ -60,6 +60,34 @@ gcn::Container* top;
 gcn::ImageFont* font;
 gcn::Label* label;
 
+
+class DmodListModel : public gcn::ListModel
+{
+public:
+  int getNumberOfElements()
+  {
+    return 100;
+  }
+  
+  std::string getElementAt(int i)
+  {
+    std::ostringstream stm;
+    stm << i;
+    return stm.str();
+  }
+};
+
+class TestActionListener : public gcn::ActionListener
+{
+ public:
+  void action(const gcn::ActionEvent& actionEvent)
+  {
+    cout << actionEvent.getId() << endl;
+    cout << dynamic_cast<gcn::ListBox*>(actionEvent.getSource())->getSelected() << endl;
+  }
+};
+
+
 void init() 
 {
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
@@ -98,8 +126,17 @@ void init()
   gui->setTop(top);
 
   label = new gcn::Label("Hello World");
-  label->setPosition(200, 100);
-  top->add(label); 
+  top->add(label, 200, 100);
+
+  DmodListModel* lm = new DmodListModel();
+  gcn::ListBox* lb = new gcn::ListBox(lm);
+  gcn::Color transparent = gcn::Color(0,0,0, 0);
+  lb->setBackgroundColor(transparent);
+  lb->setTabOutEnabled(false);
+  lb->setSelected(0);
+  top->add(lb, 125, 150);
+  lb->requestFocus();
+  lb->addActionListener(new TestActionListener());
 }
 
 void run()
