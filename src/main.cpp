@@ -49,6 +49,12 @@ PSP_HEAP_SIZE_MAX();
 extern "C" int _EXFUN(__psp_free_heap, (void));
 #endif
 
+enum buttons_psp {
+  BUTTON_TRIANGLE=0, BUTTON_CIRCLE, BUTTON_CROSS, BUTTON_SQUARE,
+  BUTTON_LTRIGGER, BUTTON_RTRIGGER,
+  BUTTON_DOWN, BUTTON_LEFT, BUTTON_UP, BUTTON_RIGHT,
+  BUTTON_SELECT, BUTTON_START, BUTTON_HOME, BUTTON_HOLD };
+
 SDL_Surface* screen;
 SDL_Joystick *joy = NULL;
 gcn::SDLInput* input;
@@ -157,10 +163,40 @@ void run()
 		  running = false;
                }
             }
-	  else if(event.type == SDL_JOYBUTTONDOWN)
+	  else if(event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP)
 	    {
-	      if (event.jbutton.button == 1)
-		running = false;
+	      if (event.jbutton.button == BUTTON_CIRCLE)
+		{
+		  running = false;
+		}
+	      else
+		{
+		  /* Simulate keyboard events that Guichan can
+		     understand and apply */
+		  SDL_Event synth_ev;
+		  synth_ev.key.keysym.mod = KMOD_NONE;
+		  synth_ev.key.keysym.sym = SDLK_UNKNOWN;
+		  if (event.type == SDL_JOYBUTTONDOWN)
+		    {
+		      synth_ev.type = SDL_KEYDOWN;
+		      synth_ev.key.state = SDL_PRESSED;
+		    }
+		  else
+		    {
+		      synth_ev.type = SDL_KEYUP;
+		      synth_ev.key.state = SDL_RELEASED;
+		    }
+		  if (event.jbutton.button == BUTTON_CROSS)
+		    synth_ev.key.keysym.sym = SDLK_RETURN;
+		  else if (event.jbutton.button == BUTTON_DOWN)
+		    synth_ev.key.keysym.sym = SDLK_DOWN;
+		  else if (event.jbutton.button == BUTTON_UP)
+		    synth_ev.key.keysym.sym = SDLK_UP;
+		  
+		  if (synth_ev.key.keysym.sym != SDLK_UNKNOWN)
+		    SDL_PushEvent(&synth_ev);
+		}
+
 	    }
 	  else if(event.type == SDL_QUIT)
             {
