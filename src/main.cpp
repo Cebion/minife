@@ -82,7 +82,6 @@ class TestActionListener : public gcn::ActionListener
  public:
   void action(const gcn::ActionEvent& actionEvent)
   {
-    cout << actionEvent.getId() << endl;
     cout << dynamic_cast<gcn::ListBox*>(actionEvent.getSource())->getSelected() << endl;
   }
 };
@@ -134,7 +133,10 @@ void init()
   lb->setBackgroundColor(transparent);
   lb->setTabOutEnabled(false);
   lb->setSelected(0);
-  top->add(lb, 125, 150);
+  gcn::ScrollArea* scroll = new gcn::ScrollArea(lb);
+  scroll->setOpaque(false);
+  scroll->setSize(460, 252);
+  top->add(scroll, 10, 10);
   lb->requestFocus();
   lb->addActionListener(new TestActionListener());
 }
