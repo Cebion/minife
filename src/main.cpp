@@ -25,6 +25,7 @@
 #endif
 
 #include <stdlib.h>
+#include <math.h>
 
 #include <iostream>
 #include <string>
@@ -33,6 +34,8 @@
 #include <guichan.hpp>
 #include <guichan/sdl.hpp>
 #include "SDL.h"
+#include "SDL_image.h"
+#include "SDL_framerate.h"
 
 #include <unistd.h>
 
@@ -54,17 +57,6 @@ enum buttons_psp {
   BUTTON_LTRIGGER, BUTTON_RTRIGGER,
   BUTTON_DOWN, BUTTON_LEFT, BUTTON_UP, BUTTON_RIGHT,
   BUTTON_SELECT, BUTTON_START, BUTTON_HOME, BUTTON_HOLD };
-
-SDL_Surface* screen;
-SDL_Joystick *joy = NULL;
-gcn::SDLInput* input;
-gcn::SDLGraphics* graphics;
-gcn::SDLImageLoader* imageLoader;
-
-gcn::Gui* gui;
-gcn::Container* top;
-gcn::ImageFont* font;
-gcn::Label* label;
 
 
 class DmodListModel : public gcn::ListModel
@@ -93,10 +85,53 @@ class TestActionListener : public gcn::ActionListener
 };
 
 
+SDL_Surface* screen = NULL;
+SDL_Surface* background = NULL;
+SDL_Joystick *joy = NULL;
+FPSmanager framerate_manager;
+
+gcn::SDLInput* input;
+gcn::SDLGraphics* graphics;
+gcn::SDLImageLoader* imageLoader;
+
+gcn::Gui* gui;
+gcn::Container* top;
+gcn::ImageFont* font;
+gcn::Label* label;
+DmodListModel* lm;
+gcn::ListBox* lb;
+
+
+void background_draw()
+{
+  static double i = 0;
+  static Uint32 last_ticks = 0;
+  double delta = (SDL_GetTicks()-last_ticks) / 1000.0;
+  i += delta;
+  // SDL_Rect fill_left = {0, 0, 2, background->h};
+  // SDL_Rect fill_right = {background->w, 0, 2, background->h};
+  // SDL_FillRect(screen, &fill_left, SDL_MapRGB(screen->format, 0, 0, 0));
+  // SDL_FillRect(screen, &fill_right, SDL_MapRGB(screen->format, 0, 0, 0));
+  SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0, 0, 0));
+  //SDL_BlitSurface(background, NULL, screen, NULL);
+  for (int y = 0; y < background->h; y += 4)
+    {
+      SDL_Rect src = {0, y, background->w, 4};
+      SDL_Rect dst = {0, y};
+      // I want 10 vertical sine waves on the 272-high screen, 1 wave
+      // move per second (20 frames/s), 3 pixels horizontal size, with
+      // PI=3.14
+      dst.x = sin((y/272.0*3.14*10) + (i*3.14)) * 3;
+      SDL_BlitSurface(background, &src, screen, &dst);
+    }
+  last_ticks = SDL_GetTicks();
+}
+
+
 void init() 
 {
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
-  screen = SDL_SetVideoMode(480, 272, 0, SDL_HWSURFACE | SDL_DOUBLEBUF);
+  screen = SDL_SetVideoMode(480, 272, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
   SDL_EnableUNICODE(1);
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
@@ -128,13 +163,14 @@ void init()
 
   top = new gcn::Container();    
   top->setDimension(gcn::Rectangle(0, 0, 480, 272));
+  top->setOpaque(false);
   gui->setTop(top);
 
   label = new gcn::Label("Hello World");
   top->add(label, 200, 100);
 
-  DmodListModel* lm = new DmodListModel();
-  gcn::ListBox* lb = new gcn::ListBox(lm);
+  lm = new DmodListModel();
+  lb = new gcn::ListBox(lm);
   gcn::Color transparent = gcn::Color(0,0,0, 0);
   lb->setBackgroundColor(transparent);
   lb->setTabOutEnabled(false);
@@ -145,23 +181,92 @@ void init()
   top->add(scroll, 10, 10);
   lb->requestFocus();
   lb->addActionListener(new TestActionListener());
+
+
+  SDL_initFramerate(&framerate_manager);
+  SDL_setFramerate(&framerate_manager, 15);
+
+  SDL_Surface* img = IMG_Load("background.png");
+  background = SDL_DisplayFormat(img);
+  if (background == NULL)
+    cerr << "Error loading background: " << SDL_GetError() << endl;
+  SDL_FreeSurface(img);
+  SDL_SetAlpha(background, SDL_SRCALPHA, 128); // 50% transparency
+}
+
+void print_event_type(Uint8 type)
+{
+  cout << "Type = ";
+  switch(type)
+    {
+    case SDL_ACTIVEEVENT:
+      cout << "SDL_ActiveEvent";
+      break;
+    case SDL_KEYDOWN:
+      cout << "SDL_KeyboardEvent/down";
+      break;
+    case SDL_KEYUP:
+      cout << "SDL_KeyboardEvent/up";
+      break;
+    case SDL_MOUSEMOTION:
+      cout << "SDL_MouseMotionEvent";
+      break;
+    case SDL_MOUSEBUTTONDOWN:
+      cout << "SDL_MouseButtonEvent/down";
+      break;
+    case SDL_MOUSEBUTTONUP:
+      cout << "SDL_MouseButtonEvent/up";
+      break;
+    case SDL_JOYAXISMOTION:
+      cout << "SDL_JoyAxisEvent";
+      break;
+    case SDL_JOYBALLMOTION:
+      cout << "SDL_JoyBallEvent";
+      break;
+    case SDL_JOYHATMOTION:
+      cout << "SDL_JoyHatEvent";
+      break;
+    case SDL_JOYBUTTONDOWN:
+      cout << "SDL_JoyButtonEvent/down";
+      break;
+    case SDL_JOYBUTTONUP:
+      cout << "SDL_JoyButtonEvent/up";
+      break;
+    case SDL_QUIT:
+      cout << "SDL_QuitEvent";
+      break;
+    case SDL_SYSWMEVENT:
+      cout << "SDL_SysWMEvent";
+      break;
+    case SDL_VIDEORESIZE:
+      cout << "SDL_ResizeEvent";
+      break;
+    case SDL_VIDEOEXPOSE:
+      cout << "SDL_ExposeEvent";
+      break;
+    case SDL_USEREVENT:
+      cout << "SDL_UserEvent";
+      break;
+    }
+  cout << endl;
 }
 
 void run()
 {
   bool running = true;
-  
+
   while (running)
     {
       SDL_Event event;
-      while(SDL_PollEvent(&event))
+      while (SDL_PollEvent(&event))
         {
+	  print_event_type(event.type);
 	  if (event.type == SDL_KEYDOWN)
             {
 	      if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
 		  running = false;
-               }
+		}
             }
 	  else if(event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP)
 	    {
@@ -194,7 +299,11 @@ void run()
 		    synth_ev.key.keysym.sym = SDLK_UP;
 		  
 		  if (synth_ev.key.keysym.sym != SDLK_UNKNOWN)
-		    SDL_PushEvent(&synth_ev);
+		    {
+		      cout << synth_ev.key.keysym.sym << endl;
+		      if (SDL_PushEvent(&synth_ev) < 0)
+			cerr << "Cannot synthetize event: " << SDL_GetError() << endl;
+		    }
 		}
 
 	    }
@@ -204,6 +313,7 @@ void run()
             }
 	  
 	  input->pushInput(event);
+	  gui->logic();
         }
       
       string s;
@@ -212,10 +322,11 @@ void run()
       ss >> s;
       label->setCaption(s);
 
-      gui->logic();
+      background_draw();
       gui->draw();
       
       SDL_Flip(screen);
+      SDL_framerateDelay(&framerate_manager);
     }
 }
 
@@ -224,6 +335,10 @@ void halt()
   if (SDL_JoystickOpened(0))
     SDL_JoystickClose(joy);
 
+  free(background);
+
+  delete lm;
+  delete lb;
   delete label;
   delete font;
   delete top;

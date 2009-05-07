@@ -69,6 +69,7 @@ CXXFLAGS="$CXXFLAGS $SDL_CFLAGS"
 LIBS="$SDL_LIBS $LIBS"
 
 LIBS="-ljpeg -lpng -lz $LIBS"
+AC_CHECK_LIB(SDL_gfx,zoomSurface,,AC_MSG_WARN([You need to install SDL_gfx]); LACK_LIBSDL_GFX=1)
 AC_CHECK_LIB(SDL_image,IMG_ReadXPMFromArray,,AC_MSG_WARN([You need to install SDL_image]); LACK_LIBSDL_IMAGE=1)
 AC_CHECK_LIB(guichan,gcnGuichanVersion,,AC_MSG_WARN([You need to install Guichan >= 0.8]); LACK_LIBGUICHAN=1)
 if test "$LACK_LIBGUICHAN" != "1"; then
@@ -85,6 +86,10 @@ warning=0
 
 if test "$LACK_LIBSDL" = 1; then
   echo "* You need to install the libSDL";
+  error=1
+fi
+if test "$LACK_LIBSDL_GFX" = 1; then
+  echo "* You need to install the SDL_gfx library";
   error=1
 fi
 if test "$LACK_LIBSDL_IMAGE" = 1; then
