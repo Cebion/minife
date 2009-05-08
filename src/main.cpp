@@ -58,70 +58,123 @@ enum buttons_psp {
   BUTTON_DOWN, BUTTON_LEFT, BUTTON_UP, BUTTON_RIGHT,
   BUTTON_SELECT, BUTTON_START, BUTTON_HOME, BUTTON_HOLD };
 
-
-class DmodListModel : public gcn::ListModel
-{
-public:
-  int getNumberOfElements()
-  {
-    return 100;
-  }
-  
-  std::string getElementAt(int i)
-  {
-    std::ostringstream stm;
-    stm << i;
-    return stm.str();
-  }
-};
-
-class TestActionListener : public gcn::ActionListener
-{
- public:
-  void action(const gcn::ActionEvent& actionEvent)
-  {
-    cout << dynamic_cast<gcn::ListBox*>(actionEvent.getSource())->getSelected() << endl;
-  }
-};
-
-
 SDL_Surface* screen = NULL;
 SDL_Surface* background = NULL;
 SDL_Joystick *joy = NULL;
 FPSmanager framerate_manager;
 
-gcn::SDLInput* input;
-gcn::SDLGraphics* graphics;
-gcn::SDLImageLoader* imageLoader;
-
-gcn::Gui* gui;
-gcn::Container* top;
+gcn::SDLImageLoader imageLoader;
 gcn::ImageFont* font;
-gcn::Label* label;
-DmodListModel* lm;
-gcn::ListBox* lb;
+
+
+class Menu : public gcn::Gui
+{
+  class DmodListModel : public gcn::ListModel
+  {
+  public:
+    int getNumberOfElements()
+    {
+      return 100;
+    }
+    
+    std::string getElementAt(int i)
+    {
+      std::ostringstream stm;
+      stm << i;
+      return stm.str();
+    }
+  };
+  
+  class TestActionListener : public gcn::ActionListener
+  {
+  public:
+    void action(const gcn::ActionEvent& actionEvent)
+    {
+      cout << dynamic_cast<gcn::ListBox*>(actionEvent.getSource())->getSelected() << endl;
+    }
+  };
+
+public:
+  gcn::SDLInput input;
+  gcn::SDLGraphics graphics;
+
+  gcn::Container top;
+
+  gcn::Label label;
+  DmodListModel lm;
+  gcn::ListBox lb;
+  gcn::ScrollArea scroll;
+  TestActionListener al;
+  gcn::CheckBox cb_sound;
+  gcn::CheckBox cb_debug;
+  gcn::CheckBox cb_m107;
+  gcn::CheckBox cb_truecolor;
+
+  Menu(SDL_Surface* screen)
+    : label("Hello World"), lb(&lm), scroll(&lb),
+      cb_sound("Sound", true), cb_truecolor("True color", false),
+      cb_m107("v1.07", false), cb_debug("Debug", false)
+  {
+    graphics.setTarget(screen);
+  
+    this->setGraphics(&graphics);
+    this->setInput(&input);
+    this->setTop(&top);
+
+    top.setDimension(gcn::Rectangle(0, 50, 480, 222));
+    top.setOpaque(false);
+
+    top.add(&label, 400, 60);
+    top.add(&scroll, 10, 10);
+    top.add(&cb_sound,     270, 10);
+    top.add(&cb_debug,     350, 10);
+    top.add(&cb_m107,      270, 30);
+    top.add(&cb_truecolor, 350, 30);
+
+    scroll.setSize(250, 202);
+    scroll.setOpaque(false);
+    lb.setWidth(250-scroll.getScrollbarWidth());
+
+    // The following is ludicrously slow on PSP, let's disable it
+    //gcn::Color transparent = gcn::Color(0,0,0, 0);
+    //lb.setBackgroundColor(transparent);
+
+    lb.setSelected(0);
+    lb.requestFocus();
+    lb.addActionListener(&al);
+  }
+
+  ~Menu()
+  {
+  }
+};
+
+
+Menu* gui;
 
 
 void background_draw()
 {
-  static double i = 0;
+  static Uint32 i = 0;
   static Uint32 last_ticks = 0;
-  double delta = (SDL_GetTicks()-last_ticks) / 1000.0;
-  i += delta;
-  // SDL_Rect fill_left = {0, 0, 2, background->h};
-  // SDL_Rect fill_right = {background->w, 0, 2, background->h};
-  // SDL_FillRect(screen, &fill_left, SDL_MapRGB(screen->format, 0, 0, 0));
-  // SDL_FillRect(screen, &fill_right, SDL_MapRGB(screen->format, 0, 0, 0));
-  SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0, 0, 0));
-  //SDL_BlitSurface(background, NULL, screen, NULL);
-  for (int y = 0; y < background->h; y += 4)
+  static Uint32 acc = 0;
+  if (last_ticks == 0)
+    i = 10;
+  else
+    i = SDL_GetTicks() - last_ticks;
+  acc += i;
+  //if (acc > 1000)
+  //  acc = 1000;
+  int y = 0;
+  for (; y < background->h; y += 2)
     {
-      SDL_Rect src = {0, y, background->w, 4};
+      SDL_Rect src = {0, y, background->w, 2};
       SDL_Rect dst = {0, y};
-      // I want 10 vertical sine waves on the 272-high screen, 1 wave
+      // I want 5 vertical sine waves on the 272-high screen, 1 wave
       // move per second (20 frames/s), 3 pixels horizontal size, with
       // PI=3.14
-      dst.x = sin((y/272.0*3.14*10) + (i*3.14)) * 3;
+      dst.x = sin((y/272.0*2*3.14*5) + (acc*3.14/1000)) * 3;
+      //dst.x = sin((y/272.0*2*3.14) * 50 * (1000-acc)/1000.0) * 10;
       SDL_BlitSurface(background, &src, screen, &dst);
     }
   last_ticks = SDL_GetTicks();
@@ -132,6 +185,7 @@ void init()
 {
   SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
   screen = SDL_SetVideoMode(480, 272, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
+  SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0,0,0));
   SDL_EnableUNICODE(1);
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 
@@ -140,58 +194,40 @@ void init()
     SDL_JoystickEventState(SDL_ENABLE);
   }
 
-  imageLoader = new gcn::SDLImageLoader();
-  gcn::Image::setImageLoader(imageLoader);
-  graphics = new gcn::SDLGraphics();
-  graphics->setTarget(screen);
-  input = new gcn::SDLInput();
-
+  // Needed before using gcn::ImageFont
+  gcn::Image::setImageLoader(&imageLoader);
   try
     {
-      font = new gcn::ImageFont("rpgfont.png", " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+      // Be sure to init it first, it sets the default size for all
+      // widgets
+      font = new gcn::ImageFont("rpgfont.png",
+				" "
+				"abcdefghijklmnopqrstuvwxyz"
+				"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+				"0123456789"
+				".,!?-+/():;%&`'*#=[]\"");
     }
   catch (gcn::Exception e)
     {
       cout << "Could not load font: " << e.getMessage() << endl;
       exit(1);
     }
-  gcn::Widget::setGlobalFont(font); 
-  
-  gui = new gcn::Gui();
-  gui->setGraphics(graphics);
-  gui->setInput(input);
+  gcn::Widget::setGlobalFont(font);
 
-  top = new gcn::Container();    
-  top->setDimension(gcn::Rectangle(0, 0, 480, 272));
-  top->setOpaque(false);
-  gui->setTop(top);
-
-  label = new gcn::Label("Hello World");
-  top->add(label, 200, 100);
-
-  lm = new DmodListModel();
-  lb = new gcn::ListBox(lm);
-  gcn::Color transparent = gcn::Color(0,0,0, 0);
-  lb->setBackgroundColor(transparent);
-  lb->setTabOutEnabled(false);
-  lb->setSelected(0);
-  gcn::ScrollArea* scroll = new gcn::ScrollArea(lb);
-  scroll->setOpaque(false);
-  scroll->setSize(460, 252);
-  top->add(scroll, 10, 10);
-  lb->requestFocus();
-  lb->addActionListener(new TestActionListener());
-
-
-  SDL_initFramerate(&framerate_manager);
-  SDL_setFramerate(&framerate_manager, 15);
+  // Now we can create the widgets
+  gui = new Menu(screen);
 
   SDL_Surface* img = IMG_Load("background.png");
   background = SDL_DisplayFormat(img);
   if (background == NULL)
-    cerr << "Error loading background: " << SDL_GetError() << endl;
+    {
+      cerr << "Error loading background: " << SDL_GetError() << endl;
+      exit(1);
+    }
   SDL_FreeSurface(img);
-  SDL_SetAlpha(background, SDL_SRCALPHA, 128); // 50% transparency
+
+  SDL_initFramerate(&framerate_manager);
+  SDL_setFramerate(&framerate_manager, 15);
 }
 
 void print_event_type(Uint8 type)
@@ -260,7 +296,6 @@ void run()
       SDL_Event event;
       while (SDL_PollEvent(&event))
         {
-	  print_event_type(event.type);
 	  if (event.type == SDL_KEYDOWN)
             {
 	      if (event.key.keysym.sym == SDLK_ESCAPE)
@@ -292,15 +327,29 @@ void run()
 		      synth_ev.key.state = SDL_RELEASED;
 		    }
 		  if (event.jbutton.button == BUTTON_CROSS)
-		    synth_ev.key.keysym.sym = SDLK_RETURN;
+		    {
+		      synth_ev.key.keysym.sym = SDLK_RETURN;
+		    }
 		  else if (event.jbutton.button == BUTTON_DOWN)
-		    synth_ev.key.keysym.sym = SDLK_DOWN;
+		    {
+		      synth_ev.key.keysym.sym = SDLK_DOWN;
+		    }
 		  else if (event.jbutton.button == BUTTON_UP)
-		    synth_ev.key.keysym.sym = SDLK_UP;
+		    {
+		      synth_ev.key.keysym.sym = SDLK_UP;
+		    }
+		  else if (event.jbutton.button == BUTTON_LEFT)
+		    {
+		      synth_ev.key.keysym.sym = SDLK_TAB;
+		      synth_ev.key.keysym.mod = (SDLMod)(synth_ev.key.keysym.mod | KMOD_LSHIFT);
+		    }
+		  else if (event.jbutton.button == BUTTON_RIGHT)
+		    {
+		      synth_ev.key.keysym.sym = SDLK_TAB;
+		    }
 		  
 		  if (synth_ev.key.keysym.sym != SDLK_UNKNOWN)
 		    {
-		      cout << synth_ev.key.keysym.sym << endl;
 		      if (SDL_PushEvent(&synth_ev) < 0)
 			cerr << "Cannot synthetize event: " << SDL_GetError() << endl;
 		    }
@@ -312,7 +361,7 @@ void run()
 	      running = false;
             }
 	  
-	  input->pushInput(event);
+	  dynamic_cast<gcn::SDLInput*>(gui->getInput())->pushInput(event);
 	  gui->logic();
         }
       
@@ -320,7 +369,7 @@ void run()
       stringstream ss;
       ss << SDL_GetTicks();
       ss >> s;
-      label->setCaption(s);
+      gui->label.setCaption(s);
 
       background_draw();
       gui->draw();
@@ -337,16 +386,8 @@ void halt()
 
   free(background);
 
-  delete lm;
-  delete lb;
-  delete label;
-  delete font;
-  delete top;
   delete gui;
-  
-  delete input;  
-  delete graphics;
-  delete imageLoader;
+  delete font;
   
   SDL_Quit();
 }
