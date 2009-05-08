@@ -11,6 +11,7 @@ PSP_EBOOT_TITLE = minife
 ##PSP_EBOOT_SND0
 ##PSP_EBOOT_PSAR
 
+if PSP
 TARGET=minife
 all-local:
 
@@ -31,3 +32,4 @@ install-psp:
 	mkdir -p /media/$(DEVICE)/PSP/GAME/$(TARGET)
 	cp -a EBOOT.PBP $(srcdir)/fixedfont.bmp /media/$(DEVICE)/PSP/GAME/$(TARGET)/
 	pumount /dev/$(DEVICE)
+endif

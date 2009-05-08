@@ -51,7 +51,7 @@ case "${host}" in
     # do something else
     ;;
 esac
-
+AM_CONDITIONAL(PSP, test "$host" == "mipsallegrexel-psp-elf")
 
 # Lengthy Gnulib checks
 #gl_INIT
