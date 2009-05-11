@@ -41,6 +41,11 @@
 
 using namespace std;
 
+/* Statically allocated string arrays, to store freedink.prx
+   parameters. Don't malloc it since we're freeing all memory before
+   starting FreeDink. */
+char freedink_argv[5*1024][1024];
+
 #ifdef _PSP
 /* The following is necessary if you're running in PRX format, whose
    default heap size is only 64kB... */
@@ -49,6 +54,7 @@ PSP_HEAP_SIZE_MAX();
 
 #include <pspsdk.h>
 #include <pspsysmem.h>
+#include <pspkernel.h>
 extern "C" int _EXFUN(__psp_free_heap, (void));
 #endif
 
@@ -69,6 +75,7 @@ gcn::ImageFont* font;
 
 class Menu : public gcn::Gui
 {
+private:
   class DmodListModel : public gcn::ListModel
   {
   public:
@@ -94,7 +101,6 @@ class Menu : public gcn::Gui
     }
   };
 
-public:
   gcn::SDLInput input;
   gcn::SDLGraphics graphics;
 
@@ -110,6 +116,8 @@ public:
   gcn::CheckBox cb_m107;
   gcn::CheckBox cb_truecolor;
 
+
+public:
   Menu(SDL_Surface* screen)
     : label("Hello World"), lb(&lm), scroll(&lb),
       cb_sound("Sound", true), cb_truecolor("True color", false),
@@ -146,6 +154,11 @@ public:
 
   ~Menu()
   {
+  }
+
+  gcn::Label& getLabel()
+  {
+    return label;
   }
 };
 
@@ -369,7 +382,7 @@ void run()
       stringstream ss;
       ss << SDL_GetTicks();
       ss >> s;
-      gui->label.setCaption(s);
+      gui->getLabel().setCaption(s);
 
       background_draw();
       gui->draw();
@@ -394,21 +407,34 @@ void halt()
 
 extern "C" int main(int argc, char **argv)
 {
+  int initial_free_memory = sceKernelTotalFreeMemSize()/1024;
+  int initial_max_free_block = sceKernelMaxFreeMemSize()/1024;
+
   /* Run the nifty frontend */
   init();
   run();  
   halt();
 
 #ifdef _PSP
+  printf("Checking memory before doing anything:\n");
+  printf("Memory free: %dkB\n", initial_free_memory);
+  printf("Max free block: %dkB\n", initial_max_free_block);
+  printf("\n");
+
   /* Release all memory for FreeDink - no more malloc from now on! */
-  // pspDebugScreenPrintf("Memory free: %dkB\n", sceKernelTotalFreeMemSize()/1024);
   __psp_free_heap();
+
+  printf("Now I'm cleaning up (freeing memory):\n");
+  printf("Memory free: %dkB\n", sceKernelTotalFreeMemSize()/1024);
+  printf("Max free block: %dkB\n", sceKernelMaxFreeMemSize()/1024);
+  printf("\n");
 
   /* Run Dink */
   char* myargv[] = { (char*)"-d" };
-  //SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx", PSP_MEMORY_PARTITION_USER, 1, myargv);
-  SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx", PSP_MEMORY_PARTITION_USER, 1, myargv);
-  if (mod < 0)
+//   SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
+// 					     PSP_MEMORY_PARTITION_USER, 1, myargv);
+  SceUID mod = pspSdkLoadStartModuleWithArgs("./microfe.prx",
+					     PSP_MEMORY_PARTITION_USER, 1, myargv);  if (mod < 0)
     {
       // Error
       pspDebugScreenInit();
@@ -436,16 +462,19 @@ extern "C" int main(int argc, char **argv)
       pspDebugScreenPrintf("\n");
       pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT);
       sleep(5);
+      /* Pause the thread, so that the user still can use the [HOME]
+	 button to reset to the XMB. */
+      sceKernelSleepThread();
+
+      // never reached
+      sceKernelExitGame();
       return EXIT_FAILURE;
     }
   // Don't printf anything here, it messes the SDL video
   // initialization for some reason..
 
-
-  /* Pause the thread, so that if running FreeDink failed, the user
-     still can use the [HOME] button to reset to the XMB. */
-  // sceKernelSelfStopUnloadModule(1, 0, NULL); // cleaner, but [HOME] crashes
-  sceKernelSleepThread();
+  // Completely free all memory
+  sceKernelSelfStopUnloadModule(1, 0, NULL);
 #endif
 
   return EXIT_SUCCESS;
