@@ -46,7 +46,7 @@ int SetupCallbacks(void)
 }
 
 #define DEBUG(...) pspDebugScreenPrintf(__VA_ARGS__); printf(__VA_ARGS__);
-int main()
+int main(int argc, char *argv[])
 {
   int initial_free_memory = sceKernelTotalFreeMemSize()/1024;
   int initial_max_free_block = sceKernelMaxFreeMemSize()/1024;
@@ -79,11 +79,11 @@ int main()
   DEBUG("\n");
 
   /* Run Dink */
-  char* myargv[] = { (char*)"-d" };
-//   SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
-// 					     PSP_MEMORY_PARTITION_USER, 1, myargv);
+  // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
+  //					     PSP_MEMORY_PARTITION_USER, argc, argv);
   SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/tutorials/meminfo-prx-large/hello.prx",
-					     PSP_MEMORY_PARTITION_USER, 1, myargv);  if (mod < 0)
+  					     PSP_MEMORY_PARTITION_USER, argc - 1, argv + 1);
+  if (mod < 0)
     {
       // Error
       pspDebugScreenInit();
@@ -91,23 +91,27 @@ int main()
       switch(mod)
 	{
 	case 0x80010002:
-	  pspDebugScreenPrintf("Program not found (%p)\n", mod);
+	  pspDebugScreenPrintf("Program not found");
 	  break;
 	case 0x80020148: // SCE_KERNEL_ERROR_UNSUPPORTED_PRX_TYPE
-	  pspDebugScreenPrintf("Unsupported PRX application (%p)\n", mod);
+	  pspDebugScreenPrintf("Unsupported PRX application");
 	  break;
 	case 0x800200D9: // http://forums.ps2dev.org/viewtopic.php?t=11887
-	  pspDebugScreenPrintf("Not enough memory (%p)\n", mod);
+	  pspDebugScreenPrintf("Not enough memory\n");
 	  break;
 	case 0x80020149: // SCE_KERNEL_ERROR_ILLEGAL_PERM_CALL
-	  pspDebugScreenPrintf("Not running from memory card? (%p)\n", mod);
+	  pspDebugScreenPrintf("Not running from memory card?");
 	  break;
 	case 0x80010014:
-	  pspDebugScreenPrintf("Invalid path? (%p)\n", mod);
+	  pspDebugScreenPrintf("Invalid path?");
+	  break;
+	case 0x8002013c: // SCE_KERNEL_ERROR_LIBRARY_NOTFOUND
+	  pspDebugScreenPrintf("This user module should be compiled in kernel mode");
 	  break;
 	default:
-	  pspDebugScreenPrintf("Unknown error %p\n", mod);
+	  pspDebugScreenPrintf("Unknown error", mod);
 	}
+      pspDebugScreenPrintf(" (%p)\n", mod);
       pspDebugScreenPrintf("\n");
       //pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT);
       sleep(5);
@@ -124,5 +128,12 @@ int main()
 
   // Completely free all memory
   sceKernelSelfStopUnloadModule(1, 0, NULL);
+  /* AFAICT this small module has the time to unload itself before
+     FreeDink is started, so there's no memory fragmentation and
+     FreeDink has the maximum amount of memory available. Should this
+     break in the future, we'd need to make this a kernel module,
+     which loaded in a different memory partition -
+     http://forums.ps2dev.org/viewtopic.php?t=11806 */
+
   return EXIT_SUCCESS; // never reached
 }

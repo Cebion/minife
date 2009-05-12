@@ -434,31 +434,36 @@ extern "C" int main(int argc, char **argv)
 //   SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
 // 					     PSP_MEMORY_PARTITION_USER, 1, myargv);
   SceUID mod = pspSdkLoadStartModuleWithArgs("./microfe.prx",
-					     PSP_MEMORY_PARTITION_USER, 1, myargv);  if (mod < 0)
+					     PSP_MEMORY_PARTITION_USER, 1, myargv);
+  if (mod < 0)
     {
       // Error
       pspDebugScreenInit();
-      pspDebugScreenPrintf("Could not run FreeDink:\n");
+      pspDebugScreenPrintf("Could not run microfe:\n");
       switch(mod)
 	{
 	case 0x80010002:
-	  pspDebugScreenPrintf("Program not found (%p)\n", mod);
+	  pspDebugScreenPrintf("Program not found");
 	  break;
 	case 0x80020148: // SCE_KERNEL_ERROR_UNSUPPORTED_PRX_TYPE
-	  pspDebugScreenPrintf("Unsupported PRX application (%p)\n", mod);
+	  pspDebugScreenPrintf("Unsupported PRX application");
 	  break;
 	case 0x800200D9: // http://forums.ps2dev.org/viewtopic.php?t=11887
-	  pspDebugScreenPrintf("Not enough memory (%p)\n", mod);
+	  pspDebugScreenPrintf("Not enough memory\n");
 	  break;
 	case 0x80020149: // SCE_KERNEL_ERROR_ILLEGAL_PERM_CALL
-	  pspDebugScreenPrintf("Not running from memory card? (%p)\n", mod);
+	  pspDebugScreenPrintf("Not running from memory card?");
 	  break;
 	case 0x80010014:
-	  pspDebugScreenPrintf("Invalid path? (%p)\n", mod);
+	  pspDebugScreenPrintf("Invalid path?");
+	  break;
+	case 0x8002013c: // SCE_KERNEL_ERROR_LIBRARY_NOTFOUND
+	  pspDebugScreenPrintf("This user module should be compiled in kernel mode");
 	  break;
 	default:
-	  pspDebugScreenPrintf("Unknown error %p\n", mod);
+	  pspDebugScreenPrintf("Unknown error", mod);
 	}
+      pspDebugScreenPrintf(" (%p)\n", mod);
       pspDebugScreenPrintf("\n");
       pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT);
       sleep(5);
