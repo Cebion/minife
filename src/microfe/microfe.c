@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
   int initial_free_memory = sceKernelTotalFreeMemSize()/1024;
   int initial_max_free_block = sceKernelMaxFreeMemSize()/1024;
 
+  SetupCallbacks();
   pspDebugScreenInit();
 
   DEBUG("-- launch --\n");
@@ -81,8 +82,11 @@ int main(int argc, char *argv[])
   /* Run Dink */
   // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
   //					     PSP_MEMORY_PARTITION_USER, argc, argv);
-  SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/tutorials/meminfo-prx-large/hello.prx",
+/*   SceUID mod = pspSdkLoadStartModuleWithArgs("ms0:/PSP/GAME/minife_testmem/hello.prx", */
+/*   					     PSP_MEMORY_PARTITION_USER, argc - 1, argv + 1); */
+  SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/minife/cross-psp/src/hello.prx",
   					     PSP_MEMORY_PARTITION_USER, argc - 1, argv + 1);
+
   if (mod < 0)
     {
       // Error
@@ -108,6 +112,12 @@ int main(int argc, char *argv[])
 	case 0x8002013c: // SCE_KERNEL_ERROR_LIBRARY_NOTFOUND
 	  pspDebugScreenPrintf("This user module should be compiled in kernel mode");
 	  break;
+	case 0x8002032c:
+	  pspDebugScreenPrintf("Cannot use relative path (no current working directory)");
+	  break;
+	case 0x80020132: // SCE_KERNEL_ERROR_PARTITION_MISMATCH
+	  pspDebugScreenPrintf("Tried to run a kernel module in user partition");
+	  break;
 	default:
 	  pspDebugScreenPrintf("Unknown error", mod);
 	}
@@ -128,12 +138,11 @@ int main(int argc, char *argv[])
 
   // Completely free all memory
   sceKernelSelfStopUnloadModule(1, 0, NULL);
-  /* AFAICT this small module has the time to unload itself before
-     FreeDink is started, so there's no memory fragmentation and
-     FreeDink has the maximum amount of memory available. Should this
-     break in the future, we'd need to make this a kernel module,
-     which loaded in a different memory partition -
-     http://forums.ps2dev.org/viewtopic.php?t=11806 */
+  /* By using this intermediary module, the SDL front-end can unload
+     itself, and we can put load another program in it.
+     http://forums.ps2dev.org/viewtopic.php?t=11806 AFAICS it breaks
+     when the other program is bigger than the front-end, though,
+     hence it's safer to use the kernel module solution. */
 
   return EXIT_SUCCESS; // never reached
 }

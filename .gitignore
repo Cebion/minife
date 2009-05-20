@@ -28,3 +28,8 @@ native
 TAGS
 # gprof
 gmon.out
+# PSP builds
+EBOOT.PBP
+PARAM.SFO
+*.elf
+*.prx

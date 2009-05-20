@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #include <iostream>
 #include <string>
@@ -430,16 +431,25 @@ extern "C" int main(int argc, char **argv)
   printf("\n");
 
   /* Run Dink */
-  char* myargv[] = { (char*)"-d" };
-//   SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
-// 					     PSP_MEMORY_PARTITION_USER, 1, myargv);
-  SceUID mod = pspSdkLoadStartModuleWithArgs("./microfe.prx",
-					     PSP_MEMORY_PARTITION_USER, 1, myargv);
+  char launcher_path[4096] = "";
+  getcwd(launcher_path, 2048);
+  strcat(launcher_path, "/klauncher.prx");
+  char freedink_path[4096] = "";
+  getcwd(freedink_path, 2048);
+  strcat(freedink_path, "/freedink.prx");
+
+  char* myargv[] = { NULL, (char*)"-d", (char*)"-s" };
+  myargv[0] = freedink_path;
+  // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
+  //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
+  // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/microfe.prx",
+  //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
+  SceUID mod = pspSdkLoadStartModuleWithArgs(launcher_path, PSP_MEMORY_PARTITION_KERNEL, 3, myargv);
   if (mod < 0)
     {
       // Error
       pspDebugScreenInit();
-      pspDebugScreenPrintf("Could not run microfe:\n");
+      pspDebugScreenPrintf("Could not run klauncher:\n");
       switch(mod)
 	{
 	case 0x80010002:
@@ -459,6 +469,12 @@ extern "C" int main(int argc, char **argv)
 	  break;
 	case 0x8002013c: // SCE_KERNEL_ERROR_LIBRARY_NOTFOUND
 	  pspDebugScreenPrintf("This user module should be compiled in kernel mode");
+	  break;
+	case 0x8002032c:
+	  pspDebugScreenPrintf("Cannot use relative path (no current working directory)");
+	  break;
+	case 0x80020132: // SCE_KERNEL_ERROR_PARTITION_MISMATCH
+	  pspDebugScreenPrintf("Tried to run a kernel module in user partition");
 	  break;
 	default:
 	  pspDebugScreenPrintf("Unknown error", mod);
