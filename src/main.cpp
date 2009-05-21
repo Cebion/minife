@@ -481,6 +481,17 @@ void halt()
 
 extern "C" int main(int argc, char **argv)
 {
+  if (argc > 1 && strcmp(argv[1], "--help") == 0)
+    {
+      printf("Usage: %s [--help|--version]\n", argv[0]);
+      return 0;
+    }
+  if (argc > 1 && strcmp(argv[1], "--version") == 0)
+    {
+      printf(PACKAGE_STRING "\n");
+      return 0;
+    }
+  
   /* Run the nifty frontend */
   init();
   run();  

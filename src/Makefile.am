@@ -1,35 +1,34 @@
 bin_PROGRAMS = minife
 minife_SOURCES = main.cpp
-EXTRA_DIST=fixedfont.bmp
-
-PSP_EBOOT_TITLE = minife
-# pack-pbp <icon0.png> <icon1.pmf> <pic0.png> <pic1.png> <snd0.at3> <data.psp> <data.psar>
-#PSP_EBOOT_ICON=freedink.png
-##PSP_EBOOT_ICON1=
-#PSP_EBOOT_UNKPNG=icon1.png
-#PSP_EBOOT_PIC1=splash.png
-##PSP_EBOOT_SND0
-##PSP_EBOOT_PSAR
+EXTRA_DIST=README background.png rpgfont.png klauncher/Makefile klauncher/klauncher.c
 
 if PSP
 TARGET=minife
-all-local:
+PSP_EBOOT_TITLE = "GNU FreeDink - front-end"
 
+all-local:
+	ln -nfs $(srcdir)/klauncher .
+	ln -nfs klauncher/klauncher.prx .
+	$(MAKE) -C klauncher/
+#	Based on pspdev/psp/sdk/lib/build.mak
 #	Fixup is mandatory. Without it the homebrew will freeze, and
 #	after 10-20s the PSP will shutdown abruptly.
 	psp-fixup-imports $(TARGET) -o $(TARGET).elf
-	mksfo $(PSP_EBOOT_TITLE) PARAM.SFO
-#	psp-strip $(TARGET).elf -o $(TARGET)_strip.elf
+	mksfoex -d MEMSIZE=1 $(PSP_EBOOT_TITLE) PARAM.SFO
 	psp-prxgen $(TARGET).elf $(TARGET).prx  # also strips
-	pack-pbp EBOOT.PBP PARAM.SFO NULL  \
-		NULL NULL NULL  \
+	pack-pbp EBOOT.PBP PARAM.SFO $(top_srcdir)/psp/freedink.png  \
+		NULL $(top_srcdir)/psp/icon1.png $(top_srcdir)/psp/splash.png  \
 		NULL  $(TARGET).prx NULL
-	rm -f $(TARGET)_strip.elf
 
-DEVICE=sda1
+clean-local:
+	-$(MAKE) -C klauncher/ clean
+	rm klauncher.prx
+
+DEVICE=sdX1
 install-psp:
 	pmount /dev/$(DEVICE)
-	mkdir -p /media/$(DEVICE)/PSP/GAME/$(TARGET)
-	cp -a EBOOT.PBP $(srcdir)/fixedfont.bmp /media/$(DEVICE)/PSP/GAME/$(TARGET)/
+	cp -aL EBOOT.PBP klauncher.prx freedink.prx \
+		$(srcdir)/rpgfont.png $(srcdir)/background.png \
+		/media/$(DEVICE)/PSP/GAME/freedink/
 	pumount /dev/$(DEVICE)
 endif

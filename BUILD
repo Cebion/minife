@@ -73,5 +73,9 @@ SDL_CONFIG=$(psp-config --psp-prefix)/bin/sdl-config \
 # For reference: minimal working g++ build:
 #psp-g++ -I/usr/local/pspdev/psp/include/SDL -Dmain=SDL_main -I/usr/local/pspdev/psp/sdk/include -L/usr/local/pspdev/psp/sdk/lib -lc conftest.cpp -lc -lpspuser  
 
+
 make
-#make psp-install
+
+# Install:
+# (replace PSP/GAME/freedink/EBOOT.PBP)
+make install-psp DEVICE=sda1
