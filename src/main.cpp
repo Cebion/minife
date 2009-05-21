@@ -436,7 +436,7 @@ void run()
   /* end while(running); */
 
 
-  if (gui->cb_sound.isSelected())
+  if (!gui->cb_sound.isSelected()) // beware, the meaning is reversed
     {
       strcpy(freedink_argv[freedink_argc], "-s");
       freedink_argc++;
