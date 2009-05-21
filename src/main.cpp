@@ -168,7 +168,7 @@ public:
     this->setTop(&top);
 
     top.setDimension(gcn::Rectangle(0, 50, 480, 222));
-    top.setOpaque(false);
+    top.setOpaque(true);
 
     top.add(&label, 400, 60);
     top.add(&scroll, 10, 10);
@@ -178,7 +178,7 @@ public:
     top.add(&cb_truecolor, 350, 30);
 
     scroll.setSize(250, 202);
-    scroll.setOpaque(false);
+    scroll.setOpaque(true);
     lb.setWidth(250-scroll.getScrollbarWidth());
 
     // The following is ludicrously slow on PSP, let's disable it
@@ -222,14 +222,14 @@ void background_draw()
   //if (acc > 1000)
   //  acc = 1000;
   int y = 0;
-  for (; y < background->h; y += 2)
+  for (; y < background->h; y += 1)
     {
-      SDL_Rect src = {0, y, background->w, 2};
+      SDL_Rect src = {0, y, background->w, 1};
       SDL_Rect dst = {0, y};
-      // I want 5 vertical sine waves on the 272-high screen, 1 wave
-      // move per second (20 frames/s), 3 pixels horizontal size, with
+      // I want 10 vertical sine waves on the 272px-high screen, 2 waves
+      // move per second (20 frames/s), 2 pixels horizontal size, with
       // PI=3.14
-      dst.x = sin((y/272.0*2*3.14*5) + (acc*3.14/1000)) * 3;
+      dst.x = sin((y/272.0*2*3.14*10) + (acc*3.14*2/1000)) * 3;
       //dst.x = sin((y/272.0*2*3.14) * 50 * (1000-acc)/1000.0) * 10;
       SDL_BlitSurface(background, &src, screen, &dst);
     }
