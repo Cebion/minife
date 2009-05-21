@@ -36,7 +36,6 @@ AC_PROG_CXX
 # Gnulib - configuration in gnulib/m4/gnulib-cache.m4
 #gl_EARLY
 
-
 # Explicitely call PKG_PROG_PKG_CONFIG because PKG_CHECK_MODULES is
 # called conditionaly
 PKG_PROG_PKG_CONFIG()
@@ -77,6 +76,9 @@ if test "$LACK_LIBGUICHAN" != "1"; then
    # circular references
    LIBS="-lguichan -lguichan_sdl $LIBS"
 fi
+
+# (struct dirent*)->d_type
+AC_STRUCT_DIRENT_D_TYPE
 
 
 echo

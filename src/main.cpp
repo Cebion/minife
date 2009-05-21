@@ -31,6 +31,8 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <vector>
+#include <algorithm>
 
 #include <guichan.hpp>
 #include <guichan/sdl.hpp>
@@ -38,14 +40,18 @@
 #include "SDL_image.h"
 #include "SDL_framerate.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
 
 using namespace std;
 
 /* Statically allocated string arrays, to store freedink.prx
    parameters. Don't malloc it since we're freeing all memory before
    starting FreeDink. */
-char freedink_argv[5*1024][1024];
+int freedink_argc = 1;
+char freedink_argv[6+1][1024];
 
 #ifdef _PSP
 /* The following is necessary if you're running in PRX format, whose
@@ -79,17 +85,46 @@ class Menu : public gcn::Gui
 private:
   class DmodListModel : public gcn::ListModel
   {
+  private:
+    vector<string> dmods;
+
   public:
+    DmodListModel()
+    {
+      /* Now check if there's a matching entry in the directory */
+      DIR *list = opendir(".");
+      if (list != NULL)
+	{
+	  struct dirent *entry;
+	  while ((entry = readdir(list)) != NULL)
+	    {
+	      if (strcmp(entry->d_name, ".") == 0
+		  || strcmp(entry->d_name, "..") == 0)
+		continue;
+	      #if HAVE_STRUCT_DIRENT_D_TYPE
+	      if (entry->d_type != DT_DIR)
+		continue;
+	      #else
+	      struct stat buf;
+	      stat(entry->d_name, &buf);
+	      if (!S_ISDIR(buf.st_mode))
+		continue;
+	      #endif
+	      dmods.push_back(string(entry->d_name));
+	    }
+	  closedir (list);
+	}
+      sort(dmods.begin(), dmods.end());
+    }
+
     int getNumberOfElements()
     {
-      return 100;
+      return dmods.size();
     }
     
     std::string getElementAt(int i)
     {
-      std::ostringstream stm;
-      stm << i;
-      return stm.str();
+      return dmods.at(i);
     }
   };
   
@@ -98,7 +133,9 @@ private:
   public:
     void action(const gcn::ActionEvent& actionEvent)
     {
-      cout << dynamic_cast<gcn::ListBox*>(actionEvent.getSource())->getSelected() << endl;
+      gcn::ListBox* lb = dynamic_cast<gcn::ListBox*>(actionEvent.getSource());
+      cout << lb->getSelected() << ": "
+	   << lb->getListModel()->getElementAt(lb->getSelected()) << endl;
     }
   };
 
@@ -112,13 +149,13 @@ private:
   gcn::ListBox lb;
   gcn::ScrollArea scroll;
   TestActionListener al;
+
+public:
   gcn::CheckBox cb_sound;
   gcn::CheckBox cb_debug;
   gcn::CheckBox cb_m107;
   gcn::CheckBox cb_truecolor;
 
-
-public:
   Menu(SDL_Surface* screen)
     : label("Hello World"), lb(&lm), scroll(&lb),
       cb_sound("Sound", true), cb_truecolor("True color", false),
@@ -160,6 +197,11 @@ public:
   gcn::Label& getLabel()
   {
     return label;
+  }
+
+  gcn::ListBox& getListBox()
+  {
+    return lb;
   }
 };
 
@@ -391,6 +433,37 @@ void run()
       SDL_Flip(screen);
       SDL_framerateDelay(&framerate_manager);
     }
+  /* end while(running); */
+
+
+  if (gui->cb_sound.isSelected())
+    {
+      strcpy(freedink_argv[freedink_argc], "-s");
+      freedink_argc++;
+    }
+  if (gui->cb_debug.isSelected())
+    {
+      strcpy(freedink_argv[freedink_argc], "-d");
+      freedink_argc++;
+    }
+  if (gui->cb_m107.isSelected())
+    {
+      strcpy(freedink_argv[freedink_argc], "-7");
+      freedink_argc++;
+    }
+  if (gui->cb_truecolor.isSelected())
+    {
+      strcpy(freedink_argv[freedink_argc], "-t");
+      freedink_argc++;
+    }
+  string cur_dmod = gui->getListBox().getListModel()->getElementAt(gui->getListBox().getSelected());
+  if (cur_dmod != "dink")
+    {
+      strcpy(freedink_argv[freedink_argc], "-g");
+      freedink_argc++;
+      strcpy(freedink_argv[freedink_argc], cur_dmod.c_str());
+      freedink_argc++;
+    }
 }
 
 void halt()
@@ -398,7 +471,7 @@ void halt()
   if (SDL_JoystickOpened(0))
     SDL_JoystickClose(joy);
 
-  free(background);
+  SDL_FreeSurface(background);
 
   delete gui;
   delete font;
@@ -408,43 +481,41 @@ void halt()
 
 extern "C" int main(int argc, char **argv)
 {
-  int initial_free_memory = sceKernelTotalFreeMemSize()/1024;
-  int initial_max_free_block = sceKernelMaxFreeMemSize()/1024;
-
   /* Run the nifty frontend */
   init();
   run();  
   halt();
 
 #ifdef _PSP
-  printf("Checking memory before doing anything:\n");
-  printf("Memory free: %dkB\n", initial_free_memory);
-  printf("Max free block: %dkB\n", initial_max_free_block);
-  printf("\n");
+  /* Run Dink */
+  char launcher_path[1024] = "";
+  getcwd(launcher_path, 1024-14);
+  strcat(launcher_path, "/klauncher.prx");
+  char freedink_path[1024] = "";
+  getcwd(freedink_path, 1024-13);
+  strcat(freedink_path, "/freedink.prx");
+
+  strcpy(freedink_argv[0], freedink_path);
+
 
   /* Release all memory for FreeDink - no more malloc from now on! */
   __psp_free_heap();
 
-  printf("Now I'm cleaning up (freeing memory):\n");
-  printf("Memory free: %dkB\n", sceKernelTotalFreeMemSize()/1024);
-  printf("Max free block: %dkB\n", sceKernelMaxFreeMemSize()/1024);
-  printf("\n");
 
-  /* Run Dink */
-  char launcher_path[4096] = "";
-  getcwd(launcher_path, 2048);
-  strcat(launcher_path, "/klauncher.prx");
-  char freedink_path[4096] = "";
-  getcwd(freedink_path, 2048);
-  strcat(freedink_path, "/freedink.prx");
+  // Convert char[][] to char** (not exactly the same
+  char* conv_argv[6+1+1];
+  memset(conv_argv, 0, sizeof(conv_argv));
+  for (int i = 0; i < freedink_argc; i++)
+    {
+      conv_argv[i] = freedink_argv[i];
+    }
 
-  char* myargv[] = { NULL, (char*)"-d", (char*)"-s" };
-  myargv[0] = freedink_path;
   // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
   //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
   // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/microfe.prx",
   //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
-  SceUID mod = pspSdkLoadStartModuleWithArgs(launcher_path, PSP_MEMORY_PARTITION_KERNEL, 3, myargv);
+  SceUID mod = pspSdkLoadStartModuleWithArgs(launcher_path, PSP_MEMORY_PARTITION_KERNEL,
+					     freedink_argc, conv_argv);
   if (mod < 0)
     {
       // Error
@@ -481,8 +552,8 @@ extern "C" int main(int argc, char **argv)
 	}
       pspDebugScreenPrintf(" (%p)\n", mod);
       pspDebugScreenPrintf("\n");
-      pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT);
-      sleep(5);
+      pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT "\n");
+      pspDebugScreenPrintf("(press [home] to quit)\n");
       /* Pause the thread, so that the user still can use the [HOME]
 	 button to reset to the XMB. */
       sceKernelSleepThread();
