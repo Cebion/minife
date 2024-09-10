@@ -44,433 +44,338 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <stdio.h>
+#include <cstring>
 
 using namespace std;
 
-/* Statically allocated string arrays, to store freedink.prx
-   parameters. Don't malloc it since we're freeing all memory before
-   starting FreeDink. */
-int freedink_argc = 1;
-char freedink_argv[6+1][1024];
+/* Statically allocated string arrays, to store freedink parameters. */
+int freedink_argc = 0; // Initialize at 0 since we'll dynamically add arguments
+char freedink_argv[8][1024]; // Support up to 8 arguments (including --game and dmod)
 
-#ifdef _PSP
-/* The following is necessary if you're running in PRX format, whose
-   default heap size is only 64kB... */
-#include <pspmoduleinfo.h>
-PSP_HEAP_SIZE_MAX();
-
-#include <pspsdk.h>
-#include <pspsysmem.h>
-#include <pspkernel.h>
-extern "C" int _EXFUN(__psp_free_heap, (void));
-#endif
-
-enum buttons_psp {
-  BUTTON_TRIANGLE=0, BUTTON_CIRCLE, BUTTON_CROSS, BUTTON_SQUARE,
-  BUTTON_LTRIGGER, BUTTON_RTRIGGER,
-  BUTTON_DOWN, BUTTON_LEFT, BUTTON_UP, BUTTON_RIGHT,
-  BUTTON_SELECT, BUTTON_START, BUTTON_HOME, BUTTON_HOLD };
-
+/* SDL Variables */
 SDL_Surface* screen = NULL;
 SDL_Surface* background = NULL;
-SDL_Joystick *joy = NULL;
 FPSmanager framerate_manager;
 
 gcn::SDLImageLoader imageLoader;
 gcn::ImageFont* font;
 
-
 class Menu : public gcn::Gui
 {
 private:
-  class DmodListModel : public gcn::ListModel
-  {
-  private:
-    vector<string> dmods;
-
-  public:
-    DmodListModel()
+    class DmodListModel : public gcn::ListModel
     {
-      /* Now check if there's a matching entry in the directory */
-      DIR *list = opendir(".");
-      if (list != NULL)
-	{
-	  struct dirent *entry;
-	  while ((entry = readdir(list)) != NULL)
-	    {
-	      if (strcmp(entry->d_name, ".") == 0
-		  || strcmp(entry->d_name, "..") == 0)
-		continue;
-	      #if HAVE_STRUCT_DIRENT_D_TYPE
-	      if (entry->d_type != DT_DIR)
-		continue;
-	      #else
-	      struct stat buf;
-	      stat(entry->d_name, &buf);
-	      if (!S_ISDIR(buf.st_mode))
-		continue;
-	      #endif
-	      dmods.push_back(string(entry->d_name));
-	    }
-	  closedir (list);
-	}
-      sort(dmods.begin(), dmods.end());
-    }
+    private:
+        vector<string> dmods;
 
-    int getNumberOfElements()
+    public:
+        DmodListModel()
+        {
+            // Open the current directory and add subdirectories to the dmod list
+            DIR *dir = opendir(".");
+            if (dir)
+            {
+                struct dirent *entry;
+                while ((entry = readdir(dir)) != NULL)
+                {
+                    // Skip "." and ".."
+                    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                        continue;
+
+                    // Check if it's a directory and add it to the list
+                    struct stat buf;
+                    stat(entry->d_name, &buf);
+                    if (S_ISDIR(buf.st_mode))
+                    {
+                        dmods.emplace_back(entry->d_name);
+                    }
+                }
+                closedir(dir);
+                std::sort(dmods.begin(), dmods.end()); // Sort the list alphabetically
+            }
+        }
+
+        int getNumberOfElements() override
+        {
+            return dmods.size();
+        }
+
+        std::string getElementAt(int i) override
+        {
+            return dmods.at(i);
+        }
+    };
+
+    class TestActionListener : public gcn::ActionListener
     {
-      return dmods.size();
-    }
-    
-    std::string getElementAt(int i)
-    {
-      return dmods.at(i);
-    }
-  };
-  
-  class TestActionListener : public gcn::ActionListener
-  {
-  public:
-    void action(const gcn::ActionEvent& actionEvent)
-    {
-      gcn::ListBox* lb = dynamic_cast<gcn::ListBox*>(actionEvent.getSource());
-      cout << lb->getSelected() << ": "
-	   << lb->getListModel()->getElementAt(lb->getSelected()) << endl;
-    }
-  };
+    public:
+        void action(const gcn::ActionEvent& actionEvent) override
+        {
+            auto* lb = dynamic_cast<gcn::ListBox*>(actionEvent.getSource());
+            if (lb)
+            {
+                cout << lb->getSelected() << ": " << lb->getListModel()->getElementAt(lb->getSelected()) << endl;
+            }
+        }
+    };
 
-  gcn::SDLInput input;
-  gcn::SDLGraphics graphics;
-
-  gcn::Container top;
-
-  gcn::Label label;
-  DmodListModel lm;
-  gcn::ListBox lb;
-  gcn::ScrollArea scroll;
-  TestActionListener al;
+    gcn::SDLInput input;
+    gcn::SDLGraphics graphics;
+    gcn::Container top;
+    gcn::Label label;
+    DmodListModel lm;
+    gcn::ListBox lb;
+    gcn::ScrollArea scroll;
+    TestActionListener al;
 
 public:
-  gcn::CheckBox cb_sound;
-  gcn::CheckBox cb_debug;
-  gcn::CheckBox cb_m107;
-  gcn::CheckBox cb_truecolor;
+    gcn::CheckBox cb_sound{"Sound", true};
+    gcn::CheckBox cb_debug{"Debug", false};
+    gcn::CheckBox cb_m107{"v1.07", false};
+    gcn::CheckBox cb_truecolor{"True color", false};
 
-  Menu(SDL_Surface* screen)
-    : label("Hello World"), lb(&lm), scroll(&lb),
-      cb_sound("Sound", true), cb_truecolor("True color", false),
-      cb_m107("v1.07", false), cb_debug("Debug", false)
-  {
-    graphics.setTarget(screen);
-  
-    this->setGraphics(&graphics);
-    this->setInput(&input);
-    this->setTop(&top);
+    Menu(SDL_Surface* screen)
+        : label("Hello World"), lb(&lm), scroll(&lb)
+    {
+        // Set up graphics and input
+        graphics.setTarget(screen);
+        this->setGraphics(&graphics);
+        this->setInput(&input);
+        this->setTop(&top);
 
-    top.setDimension(gcn::Rectangle(0, 50, 480, 222));
-    top.setOpaque(true);
+        // Configure layout and widgets
+        top.setDimension(gcn::Rectangle(0, 50, 480, 222));
+        top.setOpaque(true);
 
-    top.add(&label, 400, 60);
-    top.add(&scroll, 10, 10);
-    top.add(&cb_sound,     270, 10);
-    top.add(&cb_debug,     350, 10);
-    top.add(&cb_m107,      270, 30);
-    top.add(&cb_truecolor, 350, 30);
+        top.add(&label, 400, 60);
+        top.add(&scroll, 10, 10);
+        top.add(&cb_sound, 270, 10);
+        top.add(&cb_debug, 350, 10);
+        top.add(&cb_m107, 270, 30);
+        top.add(&cb_truecolor, 350, 30);
 
-    scroll.setSize(250, 202);
-    scroll.setOpaque(true);
-    lb.setWidth(250-scroll.getScrollbarWidth());
+        scroll.setSize(250, 202);
+        scroll.setOpaque(true);
+        lb.setWidth(250 - scroll.getScrollbarWidth());
 
-    // The following is ludicrously slow on PSP, let's disable it
-    //gcn::Color transparent = gcn::Color(0,0,0, 0);
-    //lb.setBackgroundColor(transparent);
+        lb.setSelected(0);
+        lb.requestFocus();
+        lb.addActionListener(&al);
+    }
 
-    lb.setSelected(0);
-    lb.requestFocus();
-    lb.addActionListener(&al);
-  }
+    ~Menu() override = default;
 
-  ~Menu()
-  {
-  }
+    gcn::Label& getLabel()
+    {
+        return label;
+    }
 
-  gcn::Label& getLabel()
-  {
-    return label;
-  }
-
-  gcn::ListBox& getListBox()
-  {
-    return lb;
-  }
+    gcn::ListBox& getListBox()
+    {
+        return lb;
+    }
 };
 
-
+// Global pointer to the Menu instance
 Menu* gui;
 
 
 void background_draw()
 {
-  static Uint32 i = 0;
-  static Uint32 last_ticks = 0;
-  static Uint32 acc = 0;
-  if (last_ticks == 0)
-    i = 10;
-  else
-    i = SDL_GetTicks() - last_ticks;
-  acc += i;
-  //if (acc > 1000)
-  //  acc = 1000;
-  int y = 0;
-  for (; y < background->h; y += 1)
+    static Uint32 last_ticks = 0;
+    static Uint32 acc = 0;
+
+    Uint32 current_ticks = SDL_GetTicks();
+    Uint32 delta = (last_ticks == 0) ? 10 : current_ticks - last_ticks;
+    acc += delta;
+
+    const double PI = 3.141592653589793;
+    const double screen_height = 272.0; // Adjust as needed
+
+    for (int y = 0; y < background->h; ++y)
     {
-      SDL_Rect src = {0, y, background->w, 1};
-      SDL_Rect dst = {0, y};
-      // I want 10 vertical sine waves on the 272px-high screen, 2 waves
-      // move per second (20 frames/s), 2 pixels horizontal size, with
-      // PI=3.14
-      dst.x = sin((y/272.0*2*3.14*10) + (acc*3.14*2/1000)) * 3;
-      //dst.x = sin((y/272.0*2*3.14) * 50 * (1000-acc)/1000.0) * 10;
-      SDL_BlitSurface(background, &src, screen, &dst);
+        SDL_Rect src = {0, (Sint16)y, (Uint16)background->w, 1};
+        SDL_Rect dst = {0, (Sint16)y};
+
+        // Create 10 vertical sine waves on the screen, each moving 2 waves/second
+        dst.x = static_cast<int>(sin((y / screen_height * 2 * PI * 10) + (acc * PI * 2 / 1000)) * 3);
+
+        SDL_BlitSurface(background, &src, screen, &dst);
     }
-  last_ticks = SDL_GetTicks();
+
+    last_ticks = current_ticks;
 }
 
 
 void init() 
 {
-  SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
-  screen = SDL_SetVideoMode(480, 272, 32, SDL_HWSURFACE | SDL_DOUBLEBUF);
-  SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0,0,0));
-  SDL_EnableUNICODE(1);
-  SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
-
-  if (SDL_NumJoysticks() > 0) {
-    SDL_JoystickOpen(0);
-    SDL_JoystickEventState(SDL_ENABLE);
-  }
-
-  // Needed before using gcn::ImageFont
-  gcn::Image::setImageLoader(&imageLoader);
-  try
+    // Initialize SDL with video support
+    if (SDL_Init(SDL_INIT_VIDEO) < 0)
     {
-      // Be sure to init it first, it sets the default size for all
-      // widgets
-      font = new gcn::ImageFont("rpgfont.png",
-				" "
-				"abcdefghijklmnopqrstuvwxyz"
-				"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-				"0123456789"
-				".,!?-+/():;%&`'*#=[]\"");
+        cerr << "Unable to initialize SDL: " << SDL_GetError() << endl;
+        exit(1);
     }
-  catch (gcn::Exception e)
+
+    // Set up the screen for fullscreen mode
+    screen = SDL_SetVideoMode(480, 272, 32, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+    if (!screen)
     {
-      cout << "Could not load font: " << e.getMessage() << endl;
-      exit(1);
+        cerr << "Unable to set video mode: " << SDL_GetError() << endl;
+        exit(1);
     }
-  gcn::Widget::setGlobalFont(font);
 
-  // Now we can create the widgets
-  gui = new Menu(screen);
+    // Fill the screen with black
+    SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0, 0, 0));
 
-  SDL_Surface* img = IMG_Load("background.png");
-  background = SDL_DisplayFormat(img);
-  if (background == NULL)
+    // Enable Unicode and key repeat (for keyboard handling)
+    SDL_EnableUNICODE(1);
+    SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
+
+    // Set image loader for guichan and load font
+    gcn::Image::setImageLoader(&imageLoader);
+    try
     {
-      cerr << "Error loading background: " << SDL_GetError() << endl;
-      exit(1);
+        font = new gcn::ImageFont("rpgfont.png",
+                                  " "
+                                  "abcdefghijklmnopqrstuvwxyz"
+                                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                  "0123456789"
+                                  ".,!?-+/():;%&`'*#=[]\"");
     }
-  SDL_FreeSurface(img);
+    catch (gcn::Exception& e)
+    {
+        cerr << "Could not load font: " << e.getMessage() << endl;
+        exit(1);
+    }
+    gcn::Widget::setGlobalFont(font);
 
-  SDL_initFramerate(&framerate_manager);
-  SDL_setFramerate(&framerate_manager, 15);
+    // Initialize the GUI
+    gui = new Menu(screen);
+
+    // Load and set the background image
+    SDL_Surface* img = IMG_Load("background.png");
+    if (!img)
+    {
+        cerr << "Error loading background image: " << SDL_GetError() << endl;
+        exit(1);
+    }
+    background = SDL_DisplayFormat(img);
+    SDL_FreeSurface(img);
+
+    // Set up framerate management (15 FPS)
+    SDL_initFramerate(&framerate_manager);
+    SDL_setFramerate(&framerate_manager, 15);
 }
 
 void print_event_type(Uint8 type)
 {
-  cout << "Type = ";
-  switch(type)
+    switch (type)
     {
-    case SDL_ACTIVEEVENT:
-      cout << "SDL_ActiveEvent";
-      break;
     case SDL_KEYDOWN:
-      cout << "SDL_KeyboardEvent/down";
-      break;
+        cout << "Event: SDL_KeyboardEvent (Key Down)" << endl;
+        break;
     case SDL_KEYUP:
-      cout << "SDL_KeyboardEvent/up";
-      break;
-    case SDL_MOUSEMOTION:
-      cout << "SDL_MouseMotionEvent";
-      break;
+        cout << "Event: SDL_KeyboardEvent (Key Up)" << endl;
+        break;
     case SDL_MOUSEBUTTONDOWN:
-      cout << "SDL_MouseButtonEvent/down";
-      break;
+        cout << "Event: SDL_MouseButtonEvent (Button Down)" << endl;
+        break;
     case SDL_MOUSEBUTTONUP:
-      cout << "SDL_MouseButtonEvent/up";
-      break;
-    case SDL_JOYAXISMOTION:
-      cout << "SDL_JoyAxisEvent";
-      break;
-    case SDL_JOYBALLMOTION:
-      cout << "SDL_JoyBallEvent";
-      break;
-    case SDL_JOYHATMOTION:
-      cout << "SDL_JoyHatEvent";
-      break;
-    case SDL_JOYBUTTONDOWN:
-      cout << "SDL_JoyButtonEvent/down";
-      break;
-    case SDL_JOYBUTTONUP:
-      cout << "SDL_JoyButtonEvent/up";
-      break;
+        cout << "Event: SDL_MouseButtonEvent (Button Up)" << endl;
+        break;
     case SDL_QUIT:
-      cout << "SDL_QuitEvent";
-      break;
-    case SDL_SYSWMEVENT:
-      cout << "SDL_SysWMEvent";
-      break;
-    case SDL_VIDEORESIZE:
-      cout << "SDL_ResizeEvent";
-      break;
-    case SDL_VIDEOEXPOSE:
-      cout << "SDL_ExposeEvent";
-      break;
-    case SDL_USEREVENT:
-      cout << "SDL_UserEvent";
-      break;
+        cout << "Event: SDL_QuitEvent" << endl;
+        break;
+    default:
+        cout << "Event: Other" << endl;
+        break;
     }
-  cout << endl;
 }
 
 void run()
 {
-  bool running = true;
+    bool running = true;
+    char current_path[1024];
 
-  while (running)
+    // Get the current working directory (where minife and freedink are located)
+    if (getcwd(current_path, sizeof(current_path)) == NULL)
     {
-      SDL_Event event;
-      while (SDL_PollEvent(&event))
+        perror("getcwd() error");
+        return;
+    }
+
+    while (running)
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
         {
-	  if (event.type == SDL_KEYDOWN)
+            if (event.type == SDL_KEYDOWN)
             {
-	      if (event.key.keysym.sym == SDLK_ESCAPE)
+                if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
-		  running = false;
-		}
-            }
-	  else if(event.type == SDL_JOYBUTTONDOWN || event.type == SDL_JOYBUTTONUP)
-	    {
-	      if (event.jbutton.button == BUTTON_CIRCLE)
-		{
-		  running = false;
-		}
-	      else
-		{
-		  /* Simulate keyboard events that Guichan can
-		     understand and apply */
-		  SDL_Event synth_ev;
-		  synth_ev.key.keysym.mod = KMOD_NONE;
-		  synth_ev.key.keysym.sym = SDLK_UNKNOWN;
-		  if (event.type == SDL_JOYBUTTONDOWN)
-		    {
-		      synth_ev.type = SDL_KEYDOWN;
-		      synth_ev.key.state = SDL_PRESSED;
-		    }
-		  else
-		    {
-		      synth_ev.type = SDL_KEYUP;
-		      synth_ev.key.state = SDL_RELEASED;
-		    }
-		  if (event.jbutton.button == BUTTON_CROSS)
-		    {
-		      synth_ev.key.keysym.sym = SDLK_RETURN;
-		    }
-		  else if (event.jbutton.button == BUTTON_DOWN)
-		    {
-		      synth_ev.key.keysym.sym = SDLK_DOWN;
-		    }
-		  else if (event.jbutton.button == BUTTON_UP)
-		    {
-		      synth_ev.key.keysym.sym = SDLK_UP;
-		    }
-		  else if (event.jbutton.button == BUTTON_LEFT)
-		    {
-		      synth_ev.key.keysym.sym = SDLK_TAB;
-		      synth_ev.key.keysym.mod = (SDLMod)(synth_ev.key.keysym.mod | KMOD_LSHIFT);
-		    }
-		  else if (event.jbutton.button == BUTTON_RIGHT)
-		    {
-		      synth_ev.key.keysym.sym = SDLK_TAB;
-		    }
-		  
-		  if (synth_ev.key.keysym.sym != SDLK_UNKNOWN)
-		    {
-		      if (SDL_PushEvent(&synth_ev) < 0)
-			cerr << "Cannot synthetize event: " << SDL_GetError() << endl;
-		    }
-		}
+                    running = false;
+                }
+                else if (event.key.keysym.sym == SDLK_RETURN) // Trigger when Enter is pressed
+                {
+                    // Get the selected DMOD folder
+                    string cur_dmod = gui->getListBox().getListModel()->getElementAt(gui->getListBox().getSelected());
 
-	    }
-	  else if(event.type == SDL_QUIT)
+                    if (!cur_dmod.empty())
+                    {
+                        // Reset the argument array and count
+                        memset(freedink_argv, 0, sizeof(freedink_argv));
+                        freedink_argc = 0;
+
+                        // Add arguments based on the GUI selections
+                        if (!gui->cb_sound.isSelected()) { strcpy(freedink_argv[freedink_argc++], "-s"); }
+                        if (gui->cb_debug.isSelected()) { strcpy(freedink_argv[freedink_argc++], "-d"); }
+                        if (gui->cb_m107.isSelected()) { strcpy(freedink_argv[freedink_argc++], "-7"); }
+                        if (gui->cb_truecolor.isSelected()) { strcpy(freedink_argv[freedink_argc++], "-t"); }
+
+                        // Add the --game argument and selected DMOD
+                        strcpy(freedink_argv[freedink_argc++], "--game");
+                        strcpy(freedink_argv[freedink_argc++], cur_dmod.c_str());
+
+                        // Construct the freedink command
+                        char freedink_cmd[2048];
+                        snprintf(freedink_cmd, sizeof(freedink_cmd), "%s/freedink", current_path);
+
+                        // Prepare arguments for execvp
+                        char* argv[freedink_argc + 2]; // +2 for binary and NULL terminator
+                        argv[0] = freedink_cmd;
+                        for (int i = 0; i < freedink_argc; ++i) { argv[i + 1] = freedink_argv[i]; }
+                        argv[freedink_argc + 1] = NULL;
+
+                        // Execute freedink
+                        execvp(freedink_cmd, argv);
+                        perror("Error launching freedink"); // If execvp fails
+                        exit(EXIT_FAILURE);
+                    }
+                }
+            }
+            else if (event.type == SDL_QUIT)
             {
-	      running = false;
+                running = false;
             }
-	  
-	  dynamic_cast<gcn::SDLInput*>(gui->getInput())->pushInput(event);
-	  gui->logic();
+
+            // Process GUI input and logic
+            dynamic_cast<gcn::SDLInput*>(gui->getInput())->pushInput(event);
+            gui->logic();
         }
-      
-      string s;
-      stringstream ss;
-      ss << SDL_GetTicks();
-      ss >> s;
-      gui->getLabel().setCaption(s);
 
-      background_draw();
-      gui->draw();
-      
-      SDL_Flip(screen);
-      SDL_framerateDelay(&framerate_manager);
-    }
-  /* end while(running); */
+        // GUI updates
+        gui->getLabel().setCaption(std::to_string(SDL_GetTicks()));
+        background_draw();
+        gui->draw();
 
-
-  if (!gui->cb_sound.isSelected()) // beware, the meaning is reversed
-    {
-      strcpy(freedink_argv[freedink_argc], "-s");
-      freedink_argc++;
-    }
-  if (gui->cb_debug.isSelected())
-    {
-      strcpy(freedink_argv[freedink_argc], "-d");
-      freedink_argc++;
-    }
-  if (gui->cb_m107.isSelected())
-    {
-      strcpy(freedink_argv[freedink_argc], "-7");
-      freedink_argc++;
-    }
-  if (gui->cb_truecolor.isSelected())
-    {
-      strcpy(freedink_argv[freedink_argc], "-t");
-      freedink_argc++;
-    }
-  string cur_dmod = gui->getListBox().getListModel()->getElementAt(gui->getListBox().getSelected());
-  if (cur_dmod != "dink")
-    {
-      strcpy(freedink_argv[freedink_argc], "-g");
-      freedink_argc++;
-      strcpy(freedink_argv[freedink_argc], cur_dmod.c_str());
-      freedink_argc++;
+        SDL_Flip(screen);  // Refresh the screen
+        SDL_framerateDelay(&framerate_manager);  // Control frame rate
     }
 }
 
 void halt()
 {
-  if (SDL_JoystickOpened(0))
-    SDL_JoystickClose(joy);
-
   SDL_FreeSurface(background);
 
   delete gui;
@@ -479,106 +384,16 @@ void halt()
   SDL_Quit();
 }
 
-extern "C" int main(int argc, char **argv)
+extern "C" int main()
 {
-  if (argc > 1 && strcmp(argv[1], "--help") == 0)
-    {
-      printf("Usage: %s [--help|--version]\n", argv[0]);
-      return 0;
-    }
-  if (argc > 1 && strcmp(argv[1], "--version") == 0)
-    {
-      printf(PACKAGE_STRING "\n");
-      return 0;
-    }
-  
-  /* Run the nifty frontend */
-  init();
-  run();  
-  halt();
+    // Initialize the program
+    init();
 
-#ifdef _PSP
-  /* Run Dink */
-  char launcher_path[1024] = "";
-  getcwd(launcher_path, 1024-14);
-  strcat(launcher_path, "/klauncher.prx");
-  char freedink_path[1024] = "";
-  getcwd(freedink_path, 1024-13);
-  strcat(freedink_path, "/freedink.prx");
+    // Run the main loop
+    run();
 
-  strcpy(freedink_argv[0], freedink_path);
+    // Clean up and exit
+    halt();
 
-
-  /* Release all memory for FreeDink - no more malloc from now on! */
-  __psp_free_heap();
-
-
-  // Convert char[][] to char** (not exactly the same
-  char* conv_argv[6+1+1];
-  memset(conv_argv, 0, sizeof(conv_argv));
-  for (int i = 0; i < freedink_argc; i++)
-    {
-      conv_argv[i] = freedink_argv[i];
-    }
-
-  // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/freedink.prx",
-  //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
-  // SceUID mod = pspSdkLoadStartModuleWithArgs("host0:/freedink/cross-psp/src/microfe.prx",
-  //                                            PSP_MEMORY_PARTITION_USER, 1, myargv);
-  SceUID mod = pspSdkLoadStartModuleWithArgs(launcher_path, PSP_MEMORY_PARTITION_KERNEL,
-					     freedink_argc, conv_argv);
-  if (mod < 0)
-    {
-      // Error
-      pspDebugScreenInit();
-      pspDebugScreenPrintf("Could not run klauncher:\n");
-      switch(mod)
-	{
-	case 0x80010002:
-	  pspDebugScreenPrintf("Program not found");
-	  break;
-	case 0x80020148: // SCE_KERNEL_ERROR_UNSUPPORTED_PRX_TYPE
-	  pspDebugScreenPrintf("Unsupported PRX application");
-	  break;
-	case 0x800200D9: // http://forums.ps2dev.org/viewtopic.php?t=11887
-	  pspDebugScreenPrintf("Not enough memory\n");
-	  break;
-	case 0x80020149: // SCE_KERNEL_ERROR_ILLEGAL_PERM_CALL
-	  pspDebugScreenPrintf("Not running from memory card?");
-	  break;
-	case 0x80010014:
-	  pspDebugScreenPrintf("Invalid path?");
-	  break;
-	case 0x8002013c: // SCE_KERNEL_ERROR_LIBRARY_NOTFOUND
-	  pspDebugScreenPrintf("This user module should be compiled in kernel mode");
-	  break;
-	case 0x8002032c:
-	  pspDebugScreenPrintf("Cannot use relative path (no current working directory)");
-	  break;
-	case 0x80020132: // SCE_KERNEL_ERROR_PARTITION_MISMATCH
-	  pspDebugScreenPrintf("Tried to run a kernel module in user partition");
-	  break;
-	default:
-	  pspDebugScreenPrintf("Unknown error", mod);
-	}
-      pspDebugScreenPrintf(" (%p)\n", mod);
-      pspDebugScreenPrintf("\n");
-      pspDebugScreenPrintf("If you think that's a bug, please write to " PACKAGE_BUGREPORT "\n");
-      pspDebugScreenPrintf("(press [home] to quit)\n");
-      /* Pause the thread, so that the user still can use the [HOME]
-	 button to reset to the XMB. */
-      sceKernelSleepThread();
-
-      // never reached
-      sceKernelExitGame();
-      return EXIT_FAILURE;
-    }
-  // Don't printf anything here, it messes the SDL video
-  // initialization for some reason..
-
-  // Completely free all memory
-  sceKernelSelfStopUnloadModule(1, 0, NULL);
-#endif
-
-  return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
